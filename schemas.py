@@ -1,51 +1,35 @@
-from pydantic import BaseModel
-from datetime import datetime
-from typing import List, Optional
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Dict, Optional
+import datetime
 
-class UserCreate(BaseModel):
-    username: str
+
+class UserModel(BaseModel):
+    username: str = Field(..., min_length=5, max_length=20)
+    email: EmailStr
     password: str
+    phone: str
+    age: int = Field(..., ge=14)
 
-class TeamCreate(BaseModel):
-    name: str
 
-class TournamentCreate(BaseModel):
-    name: str
-    date: Optional[datetime] = None
+class TeamModel(BaseModel):
+    name: str = Field(..., max_length=20)
+    description: str = Field(..., max_length=500)
+    userlist: List[str]
 
-class ResultCreate(BaseModel):
-    score: int
-    team_id: int
-    tournament_id: int
 
-class User(BaseModel):
-    id: int
-    username: str
+class TournamentModel(BaseModel):
+    name: str = Field(..., max_length=20)
+    description: str = Field(..., max_length=500)
+    reward: str = Field(..., max_length=100)
+    rules: Dict[str, str]
+    start_date: datetime.datetime
+    end_date: datetime.datetime
+    close_reg: datetime.datetime
+    teamlist: List[str]
 
-    class Config:
-        orm_mode = True
 
-class Team(BaseModel):
-    id: int
-    name: str
-    user_id: int
-
-    class Config:
-        orm_mode = True
-
-class Tournament(BaseModel):
-    id: int
-    name: str
-    date: datetime
-
-    class Config:
-        orm_mode = True
-
-class Result(BaseModel):
-    id: int
-    score: int
-    team_id: int
-    tournament_id: int
-
-    class Config:
-        orm_mode = True
+class ResultModel(BaseModel):
+    tournament: str
+    mvp: Optional[str] = Field(None, max_length=20)
+    team: str
+    score: str

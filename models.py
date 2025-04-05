@@ -1,74 +1,71 @@
-from fastapi import Query, HTTPException, status
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import List, Dict
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime
+from sqlalchemy.orm import relationship
+from database import Base
 import datetime
-import re
 
 
-class UserModel(BaseModel):
-    username: str = Query(..., min_length=5, max_length=20)
-    email: EmailStr
-    password: str
-    phone: str
-    age: int = Query(..., gte=14)
+class User(Base):
+    __tablename__ = 'users'
 
-    @field_validator('phone')
-    @classmethod
-    def verify_phone(cls, phone: str) -> str:
-        if not re.match(r'^\+?[1-9]\d{1,14}$', phone):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid phone number')
-        return phone
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True)
+    password = Column(String)
+    phone = Column(String)
+    age = Column(Integer)
+    is_active = Column(Boolean, default=True)
 
-    @field_validator('password')
-    @classmethod
-    def validate_password(cls, password):
-        if not re.search(r'[^a-zA-Z0-9]', password):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Invalid password')
-        return password
+    # Optionally, a relationship with teams, if needed
+    teams = relationship("Team", back_populates="user")
 
 
-class UserModeljson(BaseModel):
-    userresponse: List[UserModel]
+class Team(Base):
+    __tablename__ = 'teams'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    description = Column(String)
+    user_id = Column(Integer, ForeignKey('users.id'))  # <-- Corrected line
+
+    # Relationship with the user (one-to-many)
+    user = relationship("User", back_populates="teams")
+
+    # Optional relationship with tournaments (many-to-many, depending on structure)
+    tournaments = relationship("Tournament", secondary="team_tournaments", back_populates="teams")
 
 
-class TeamModel(BaseModel):
-    name: str = Query(..., max_length=20)
-    description: str = Query(..., max_length=500)
-    userlist: List[str]
+class Tournament(Base):
+    __tablename__ = 'tournaments'
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    description = Column(String)
+    reward = Column(String)
+    start_date = Column(DateTime)
+    end_date = Column(DateTime)
+    close_reg = Column(DateTime)
+
+    # Relationship with teams (many-to-many)
+    teams = relationship("Team", secondary="team_tournaments", back_populates="tournaments")
 
 
-class TeamModeljson(BaseModel):
-    teamresponse: List[TeamModel]
+# Association table for the many-to-many relationship between Team and Tournament
+class TeamTournament(Base):
+    __tablename__ = 'team_tournaments'
+
+    team_id = Column(Integer, ForeignKey('teams.id'), primary_key=True)
+    tournament_id = Column(Integer, ForeignKey('tournaments.id'), primary_key=True)
 
 
-class TournamentModel(BaseModel):
-    name: str = Query(..., max_length=20)
-    description: str = Query(..., max_length=500)
-    reward: str = Query(..., max_length=100)
-    rules: Dict[str, str]
-    start_date: datetime.datetime
-    end_date: datetime.datetime
-    close_reg: datetime.datetime
-    teamlist: List[str]
+class Result(Base):
+    __tablename__ = 'results'
 
-    @field_validator('start_date', 'end_date', 'close_reg')
-    @classmethod
-    def validate_datetime(cls, value):
-        if value.date() < datetime.datetime.now():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'The date {value} cannot be in the past')
-        return value
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey('tournaments.id'))
+    team_id = Column(Integer, ForeignKey('teams.id'))
+    mvp = Column(String, nullable=True)
+    score = Column(String)
 
-
-class TournamentModeljson(BaseModel):
-    tournamentmodel: List[TournamentModel]
-
-
-class ResultModel(BaseModel):
-    tournament: str
-    mvp: str = Query(None, max_length=20)
-    team: str
-    score: str
-
-
-class ResultModeljson(BaseModel):
-    resultmodel: List[ResultModel]
+    # Relationship to team and tournament
+    team = relationship("Team")
+    tournament = relationship("Tournament")
