@@ -1,80 +1,103 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, APIRouter
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
-from typing import List
-import models, schemas
-from database import SessionLocal, init_db
+from auth import create_access_token, verify_access_token, get_current_user, UserLogin
+from test import User as UserPydantic, Result as ResultPydantic, Team as TeamPydantic, Tournament as TournamentPydantic
+from test_sqlalchemy import get_db, Session, User, Result, Tournament, Team, \
+    result_team_association, result_user_association, result_tournament_association, \
+    user_team_association
+
+from database import engine
+from test_sqlalchemy import Base
+
+Base.metadata.create_all(bind=engine)
+print("Таблиці створені автоматично")
+
+router = APIRouter()
+
+@router.post("/token")
+async def login_for_access_token(user: UserLogin): 
+    token = create_access_token(data={"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
 
 app = FastAPI()
 
-# Initialize the database tables (called once when starting the app)
-init_db()
-
-# Dependency to get the DB session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# CRUD operations for Users
-@app.post("/users/", response_model=schemas.UserModel)
-def create_user(user: schemas.UserModel, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    db_user = models.User(**user.dict())
-    db.add(db_user)
+@app.post('/user', summary="Registration of users")
+async def user_add(user: UserPydantic, db: Session = Depends(get_db)):
+    user_DB = db.query(User).filter(User.email == user.email).first()
+    if user_DB:
+        raise HTTPException(status_code=400, detail="User with this email already exists!")
+    new_user = User(username=user.username, email=user.email, password=user.password)
+    db.add(new_user)
     db.commit()
-    db.refresh(db_user)
-    return db_user
+    db.refresh(new_user)
+    return {'user': new_user, 'message': "User has been added to the DB!"}
 
-@app.get("/users/", response_model=List[schemas.UserModel])
-def get_users(db: Session = Depends(get_db)):
-    return db.query(models.User).all()
+@app.post('/result')
+async def add_result(result: ResultPydantic, db: Session = Depends(get_db)):
+    name_team = result.team.name
+    name_tournament = result.tournament.name
+    email_user_mvp = result.mvp.email
 
-@app.get("/users/{user_id}", response_model=schemas.UserModel)
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return db_user
+    mvp_from_DB = db.query(User).filter(User.email == email_user_mvp).first()
+    tournament_DB = db.query(Tournament).filter(Tournament.name == name_tournament).order_by(desc(Tournament.id)).first()
+    team_DB = db.query(Team).filter(Team.name == name_team).first()
 
-# CRUD operations for Teams
-@app.post("/teams/", response_model=schemas.TeamModel)
-def create_team(team: schemas.TeamModel, db: Session = Depends(get_db)):
-    db_team = models.Team(**team.dict())
-    db.add(db_team)
+    if not mvp_from_DB or not tournament_DB or not team_DB:
+        raise HTTPException(status_code=404, detail="Something happened! User or Team or Tournament do not exist!")
+
+    new_result = Result(score=result.score)
+    db.add(new_result)
     db.commit()
-    db.refresh(db_team)
-    return db_team
+    db.refresh(new_result)
 
-@app.get("/teams/", response_model=List[schemas.TeamModel])
-def get_teams(db: Session = Depends(get_db)):
-    return db.query(models.Team).all()
-
-# CRUD operations for Tournaments
-@app.post("/tournaments/", response_model=schemas.TournamentModel)
-def create_tournament(tournament: schemas.TournamentModel, db: Session = Depends(get_db)):
-    db_tournament = models.Tournament(**tournament.dict())
-    db.add(db_tournament)
+    db.execute(result_user_association.insert().values({'result_id': new_result.id, 'user_id': mvp_from_DB.id}))
+    db.execute(result_tournament_association.insert().values({'result_id': new_result.id, 'tournament_id': tournament_DB.id}))
+    db.execute(result_team_association.insert().values({'result_id': new_result.id, 'team_id': team_DB.id}))
     db.commit()
-    db.refresh(db_tournament)
-    return db_tournament
 
-@app.get("/tournaments/", response_model=List[schemas.TournamentModel])
-def get_tournaments(db: Session = Depends(get_db)):
-    return db.query(models.Tournament).all()
+    return {'result': result, 'message': "Result has been added to the DB!"}
 
-# CRUD operations for Results
-@app.post("/results/", response_model=schemas.ResultModel)
-def create_result(result: schemas.ResultModel, db: Session = Depends(get_db)):
-    db_result = models.Result(**result.dict())
-    db.add(db_result)
+@app.post('/team')
+async def add_team(team: TeamPydantic, db: Session = Depends(get_db)):
+    team_DB = db.query(Team).filter(Team.name == team.name).first()
+    if team_DB:
+        raise HTTPException(status_code=400, detail="Team with this name already exists!")
+
+    new_team = Team(name=team.name, description=team.description)
+    db.add(new_team)
     db.commit()
-    db.refresh(db_result)
-    return db_result
+    db.refresh(new_team)
 
-@app.get("/results/", response_model=List[schemas.ResultModel])
-def get_results(db: Session = Depends(get_db)):
-    return db.query(models.Result).all()
+    for email in team.users:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            db.execute(user_team_association.insert().values({"user_id": user.id, "team_id": new_team.id}))
+
+    db.commit()
+    return {'Team': team, 'message': "Team has been added to the DB!"}
+
+@app.post('/tournament')
+async def add_tournament(tournament: TournamentPydantic, db: Session = Depends(get_db)):
+    tournament_DB = db.query(Tournament).filter(Tournament.name == tournament.name).first()
+    if tournament_DB:
+        raise HTTPException(status_code=400, detail="Tournament with this name already exists!")
+
+    if tournament.end_date <= tournament.start_date:
+        raise HTTPException(status_code=400, detail="End date must be after start date.")
+
+    new_tournament = Tournament(
+        name=tournament.name,
+        description=tournament.description,
+        reward=tournament.reward,
+        rules=tournament.rules,
+        start_date=tournament.start_date,
+        end_date=tournament.end_date
+    )
+    db.add(new_tournament)
+    db.commit()
+    db.refresh(new_tournament)
+
+    return {'Tournament': tournament, 'message': "Tournament has been added to the DB!"}
+
+app.include_router(router)
