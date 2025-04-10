@@ -25,7 +25,8 @@ class Tournament(BaseModel):
 
 
 class Result(BaseModel):
-    score: int
-    mvp: User
-    team: Team
+    score_team_1: int
+    score_team_2: int
+    team_1_id: int
+    team_2_id: int
     tournament: Tournament

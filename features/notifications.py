@@ -1,8 +1,10 @@
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import asyncio
+import websockets
 
-# Функція для відправки електронних листів
+#відправк електронних листів
 def send_email(subject, body, to_email):
     from_email = "email@gmail.com"  
     password = "email_password"     
@@ -24,14 +26,11 @@ def send_email(subject, body, to_email):
         print(f"Error: {e}")
 
 
-import websockets
-import asyncio
-
 async def notify_user(websocket, path):
     message = "Увага! Ваш матч скоро!"
     await websocket.send(message)
 
-start_server = websockets.serve(notify_user, "localhost", 8001)
+async def start_websocket_server():
+    server = await websockets.serve(notify_user, "localhost", 8001)
+    await server.wait_closed()
 
-asyncio.get_event_loop().run_until_complete(start_server)
-asyncio.get_event_loop().run_forever()

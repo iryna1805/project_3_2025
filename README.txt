@@ -13,7 +13,7 @@ uvicorn main:app --reload
 - **Pydantic** — валідація даних
 - **SQLite** — база даних (можна легко замінити на PostgreSQL)
 
-## Встановлення
+##        Встановлення
 
 ```bash
 git clone <url>

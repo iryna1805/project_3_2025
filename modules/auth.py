@@ -3,10 +3,9 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-# from sqlalchemy.orm import Session  # якщо потрібно працювати з БД
-# from test_sqlalchemy import User    # якщо потрібно витягувати користувача з БД
+# from sqlalchemy.orm import Session  
+# from test_sqlalchemy import User 
 
-# Секретний ключ і алгоритм
 SECRET_KEY = "0d4f7253f7d6e420b58ac70a212edc432b4eb61f61e67f8e9aee161430876ccd"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
